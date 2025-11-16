@@ -1,0 +1,166 @@
+
+install.packages(c("mgcv","pROC","caret","dplyr","ggplot2"))   # run once
+library(mgcv)
+library(pROC)
+library(caret)
+library(dplyr)
+library(ggplot2)
+
+## --------------------------------------------------------------
+## 2. Load & clean data -----------------------------------------
+## --------------------------------------------------------------
+df<- read.csv(file.choose(), strings=T)
+
+df <- read.csv("synthetic_fraud_dataset.csv", stringsAsFactors = FALSE)
+
+df <- df %>%
+  mutate(
+    Transaction_Type            = factor(Transaction_Type),
+    Device_Type                 = factor(Device_Type),
+    Location                    = factor(Location),
+    Merchant_Category           = factor(Merchant_Category),
+    Card_Type                   = factor(Card_Type),
+    Authentication_Method       = factor(Authentication_Method),
+    IP_Address_Flag             = factor(IP_Address_Flag),
+    Previous_Fraudulent_Activity= factor(Previous_Fraudulent_Activity),
+    Is_Weekend                  = factor(Is_Weekend),
+    Fraud_Label                 = factor(Fraud_Label, levels = c(0,1))
+  ) %>%
+  select(-Transaction_ID, -User_ID, -Timestamp)
+
+## --------------------------------------------------------------
+## 3. Train / test split ----------------------------------------
+## --------------------------------------------------------------
+set.seed(123)
+train_idx <- createDataPartition(df$Fraud_Label, p = .70, list = FALSE)
+train <- df[train_idx, ]
+test  <- df[-train_idx, ]
+
+## --------------------------------------------------------------
+## 4. Fit GAM ---------------------------------------------------
+## --------------------------------------------------------------
+gam_mod <- gam(
+  Fraud_Label ~
+    s(Transaction_Amount)                     +
+    Transaction_Type                          +
+    s(Account_Balance)                        +
+    Device_Type                               +
+    Location                                  +
+    Merchant_Category                         +
+    IP_Address_Flag                           +
+    Previous_Fraudulent_Activity              +
+    s(Daily_Transaction_Count)                +
+    s(Avg_Transaction_Amount_7d)              +
+    s(Failed_Transaction_Count_7d)            +
+    Card_Type                                 +
+    s(Card_Age)                               +
+    s(Transaction_Distance)                   +
+    Authentication_Method                     +
+    s(Risk_Score)                             +
+    Is_Weekend,
+  family = binomial,
+  data   = train
+)
+
+
+
+
+
+gam_mod<- gam(
+  Fraud_Label ~ s(Transaction_Amount) +
+    s(Account_Balance) +
+    s(Risk_Score) +
+    s(Transaction_Distance) +
+    Avg_Transaction_Amount_7d +
+    Daily_Transaction_Count +
+    Card_Age +
+    Is_Weekend +
+    Previous_Fraudulent_Activity +
+    Device_Type +
+    Card_Type,
+  data = train,
+  family = binomial(link = "logit"), # Logistic GAM for binary classification
+  method = "REML"
+)
+summary(gam_mod)   # check p-values for smooth terms
+
+## --------------------------------------------------------------
+## 5. Predictions & ROC -----------------------------------------
+## --------------------------------------------------------------
+test_prob  <- predict(gam_mod, newdata = test, type = "response")
+roc_obj    <- roc(test$Fraud_Label, test_prob, quiet = TRUE)
+auc_val    <- auc(roc_obj)
+
+## ---- ROC plot (ggplot2) --------------------------------------
+roc_df <- data.frame(
+  fpr = 1 - roc_obj$specificities,
+  tpr = roc_obj$sensitivities
+)
+
+p_roc <- ggplot(roc_df, aes(x = fpr, y = tpr)) +
+  geom_line(color = "#2c7bb6", size = 1.2) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray50") +
+  labs(
+    title = "ROC Curve – GAM Fraud Detector",
+    subtitle = paste0("AUC = ", round(auc_val, 4)),
+    x = "False Positive Rate (1 – Specificity)",
+    y = "True Positive Rate (Sensitivity)"
+  ) +
+  theme_minimal(base_size = 14) +
+  coord_fixed()
+
+print(p_roc)          # <-- THIS IS THE ROC GRAPH YOU ASKED FOR
+ggsave("GAM_ROC_Curve.png", p_roc, width = 7, height = 7, dpi = 300)
+
+## --------------------------------------------------------------
+## 6. Confusion matrix & metrics --------------------------------
+## --------------------------------------------------------------
+test_pred  <- factor(ifelse(test_prob > 0.5, 1, 0), levels = c(0,1))
+cm         <- confusionMatrix(test_pred, test$Fraud_Label, positive = "1")
+print(cm)
+
+bal_acc    <- cm$byClass["Balanced Accuracy"]
+cat("\nBalanced Accuracy =", round(bal_acc, 4), "\n")
+
+## --------------------------------------------------------------
+## 7. Model significance (Chi-square) ---------------------------
+## --------------------------------------------------------------
+null_mod   <- glm(Fraud_Label ~ 1, family = binomial, data = train)
+anova_res  <- anova(gam_mod, null_mod, test = "Chisq")
+print(anova_res)   # p-value << 0.001
+
+
+data <- read.csv("synthetic_fraud_dataset.csv")
+gam_mod <- gam(Fraud_Label ~ 
+                   Merchant_Category + 
+                   Is_Weekend + 
+                 s(Risk_Score)+
+                   s(Transaction_Amount) + 
+                   s(Account_Balance),
+                 family = binomial(link = "logit"),
+                 data = train)
+
+
+plot(gam_mod, pages = 1, se = TRUE, rug = TRUE, shade = FALSE)
+
+
+
+# Plot smooth terms
+library(mgcv)
+library(dplyr)
+#install.packages("caret")
+library(caret)
+df<- read.csv(file.choose(), strings=T)
+data <- read.csv("synthetic_fraud_dataset.csv")
+gam_model <- gam(Fraud_Label ~ 
+                   Merchant_Category + 
+                   Is_Weekend + 
+                   s(Transaction_Amount) + 
+                   s(Account_Balance) + 
+                   s(Card_Age)+
+                   s(Risk_Score),
+                 family = binomial(link = "logit"),
+                 data = data)
+
+
+plot(gam_model, pages = 1, se = TRUE, rug = TRUE, shade = FALSE)
