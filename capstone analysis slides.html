@@ -1,0 +1,366 @@
+
+##Confusion Matrix
+##Install once: 
+#install.packages(
+#  c("mgcv", "pROC", "caret", "dplyr", "ggplot2", "scales"),
+repos = "https://cloud.r-project.org"
+#)
+
+library(mgcv)
+library(pROC)
+library(caret)
+library(dplyr)
+library(ggplot2)
+library(scales)
+
+data <- read.csv("synthetic_fraud_dataset.csv", stringsAsFactors = FALSE)
+# 2. Data Preprocessing
+# ------------------------------------------------
+
+# Convert the target variable and categorical predictors to factors
+data$Fraud_Label <- factor(data$Fraud_Label, levels = c(0, 1))
+data$Is_Weekend <- factor(data$Is_Weekend)
+data$Previous_Fraudulent_Activity <- factor(data$Previous_Fraudulent_Activity)
+data$Device_Type <- factor(data$Device_Type)
+data$Card_Type <- factor(data$Card_Type)
+
+# ------------------------------------------------
+# 3. Data Splitting (70% Train, 30% Test)
+# ------------------------------------------------
+
+set.seed(42) # For reproducibility
+train_index <- createDataPartition(data$Fraud_Label, p = 0.7, list = FALSE)
+train_data <- data[train_index, ]
+test_data <- data[-train_index, ]
+
+# ------------------------------------------------
+# 4. GAM Fitting (Logistic Model)
+# ------------------------------------------------
+
+# Use smooth terms (s()) for continuous variables to capture non-linear fraud patterns.
+gam_model <- gam(
+  Fraud_Label ~ s(Transaction_Amount) +
+    s(Account_Balance) +
+    s(Risk_Score) +
+    s(Transaction_Distance) +
+    Avg_Transaction_Amount_7d +
+    Daily_Transaction_Count +
+    Card_Age +
+    Is_Weekend +
+    Previous_Fraudulent_Activity +
+    Device_Type +
+    Card_Type,
+  data = train_data,
+  family = binomial(link = "logit"), # Logistic GAM for binary classification
+  method = "REML"
+)
+summary(gam_model)
+
+# Create a tidy table of smooth terms and parametric coefficients
+library(broom)
+
+# Smooth terms (edf, chi-sq, p-values)
+smooth_terms <- summary(gam_model)$s.table
+smooth_df <- data.frame(
+  Term = rownames(smooth_terms),
+  EDF = smooth_terms[, "edf"],
+  ChiSq = smooth_terms[, "Chi.sq"],
+  p_value = smooth_terms[, "p-value"]
+)
+
+# Parametric terms (linear + categorical)
+param_df <- tidy(gam_model)
+
+# Combine into one table
+model_table <- list(
+  Smooth_Terms = smooth_df,
+  Parametric_Terms = param_df
+)
+
+# Print tables
+model_table$Smooth_Terms
+model_table$Parametric_Terms
+
+
+# ------------------------------------------------
+# 5. Prediction and AUC Calculation
+# ------------------------------------------------
+
+test_probabilities <- predict(gam_model, newdata = test_data, type = "response")
+
+# Generate the ROC curve
+roc_obj <- roc(test_data$Fraud_Label, test_probabilities)
+auc_value <- auc(roc_obj)
+
+
+# ------------------------------------------------
+# 6. Confusion Matrix and Balanced Accuracy
+# ------------------------------------------------
+
+# Convert probabilities to classes (using 0.5 threshold)
+predicted_classes <- factor(ifelse(test_probabilities > 0.5, 1, 0), levels = c(0, 1))
+cm <- confusionMatrix(predicted_classes, test_data$Fraud_Label, positive = "1")
+balanced_accuracy <- cm$byClass["Balanced Accuracy"]
+
+print(cm)
+
+# Prepare data for plotting
+cm_table <- as.data.frame(cm$table)
+names(cm_table) <- c("Pred", "Ref", "Freq")
+
+cm_table <- cm_table %>%
+  group_by(Ref) %>%
+  mutate(Pct = Freq/sum(Freq)*100, Label = paste0(Freq, "\n(", round(Pct,1), "%)"))
+
+# Create the heatmap plot
+p_cm <- ggplot(cm_table, aes(x = Ref, y = Pred, fill = Freq)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = Label), color = "white", size = 6, fontface = "bold") +
+  scale_fill_gradient(low = "#2c7bb6", high = "#d7191c") +
+  labs(title = "Confusion Matrix", x = "Actual (Reference)", y = "Predicted") +
+  theme_minimal() +
+  coord_fixed()
+print(p_cm)
+
+
+# Plot smooth terms
+library(mgcv)
+library(dplyr)
+#install.packages("caret")
+library(caret)
+data <- read.csv("synthetic_fraud_dataset.csv")
+gam_model <- gam(Fraud_Label ~ 
+                   Merchant_Category + 
+                   Is_Weekend + 
+                   s(Transaction_Amount) + 
+                   s(Account_Balance) +
+                   s(card_age) +
+                   s(Risk_Score),
+                 family = binomial(link = "logit"),
+                 data = data)
+
+
+plot(gam_model, pages = 1, se = TRUE, rug = TRUE, shade = FALSE)
+
+
+# Build GAM model with Risk_Score included as a smooth term
+
+gam_model <- gam(Fraud_Label ~
+                   
+                   Merchant_Category +
+                   
+                   Is_Weekend +
+                   
+                   s(Transaction_Amount) +
+                   
+                   s(Account_Balance) +
+                   
+                   s(Card_Age) +
+                   
+                   s(Risk_Score),
+                 
+                 family = binomial(link = "logit"),
+                 
+                 data = data)
+
+
+# ===== COLORFUL VERSION 1: Different colors for each plot =====
+
+par(mfrow = c(2, 2), mar = c(4, 4, 3, 2))
+
+plot(gam_model, select = 1, shade = TRUE, col = "blue", lwd = 2,
+     
+     shade.col = "lightblue", main = "s(Transaction_Amount)")
+
+plot(gam_model, select = 2, shade = TRUE, col = "green4", lwd = 2,
+     
+     shade.col = "lightgreen", main = "s(Account_Balance)")
+
+plot(gam_model, select = 3, shade = TRUE, col = "purple", lwd = 2,
+     
+     shade.col = "plum", main = "s(Card_Age)")
+
+plot(gam_model, select = 4, shade = TRUE, col = "red", lwd = 2,
+     
+     shade.col = "pink", main = "s(Risk_Score)")
+
+par(mfrow = c(1, 1))
+
+
+
+# ===== COLORFUL VERSION 2: All same color with custom styling =====
+
+par(mfrow = c(2, 2),
+    
+    mar = c(4, 4, 3, 2),
+    
+    bg = "white")
+
+plot(gam_model, shade = TRUE, col = "darkblue", lwd = 3,
+     
+     shade.col = "skyblue", rug = TRUE,
+     
+     col.axis = "darkblue", col.lab = "darkblue")
+
+par(mfrow = c(1, 1))
+
+
+
+# ===== COLORFUL VERSION 3: Rainbow colors =====
+
+colors <- c("red", "orange", "green4", "blue")
+
+shade_colors <- c("pink", "lightyellow", "lightgreen", "lightblue")
+
+
+
+par(mfrow = c(2, 2), mar = c(4, 4, 3, 2))
+
+for(i in 1:4) {
+  
+  plot(gam_model, select = i, shade = TRUE,
+       
+       col = colors[i], lwd = 3,
+       
+       shade.col = shade_colors[i])
+  
+}
+
+par(mfrow = c(1, 1))
+
+
+
+# ===== SAVE COLORFUL VERSION =====
+
+png("gam_colorful_plots.png", width = 1200, height = 1000, res = 120)
+
+par(mfrow = c(2, 2), mar = c(4, 4, 3, 2))
+
+plot(gam_model, select = 1, shade = TRUE, col = "blue", lwd = 3,
+     
+     shade.col = "lightblue", main = "Transaction Amount Effect")
+
+plot(gam_model, select = 2, shade = TRUE, col = "green4", lwd = 3,
+     
+     shade.col = "lightgreen", main = "Account Balance Effect")
+
+plot(gam_model, select = 3, shade = TRUE, col = "purple", lwd = 3,
+     
+     shade.col = "plum", main = "Card Age Effect")
+
+plot(gam_model, select = 4, shade = TRUE, col = "red", lwd = 3,
+     
+     shade.col = "pink", main = "Risk Score Effect")
+
+dev.off()
+
+par(mfrow = c(1, 1))
+
+
+
+
+
+
+
+
+# View model summary
+
+summary(gam_model)
+
+plot(gam_model, pages = 1, se = TRUE, rug = TRUE, shade = FALSE)
+
+plot(gam_model, se = TRUE, rug = TRUE, shade = FALSE)
+
+gam.check(gam_model)
+
+data$predicted_pro <-predict(gam_model, type = "response")
+
+
+# ===== OPTION 1: All plots on ONE page (2x2 grid) =====
+
+par(mfrow = c(2, 2))  # 2 rows, 2 columns
+
+plot(gam_model, se = TRUE, rug = TRUE, shade = TRUE)
+
+par(mfrow = c(1, 1))  # Reset to default
+
+
+
+# ===== OPTION 2: All plots on ONE page (1x4 grid) =====
+
+par(mfrow = c(1, 4))  # 1 row, 4 columns
+
+plot(gam_model, se = TRUE, rug = TRUE, shade = TRUE)
+
+par(mfrow = c(1, 1))  # Reset to default
+
+
+
+# ===== OPTION 3: All plots vertically (4x1 grid) =====
+
+par(mfrow = c(4, 1))  # 4 rows, 1 column
+
+plot(gam_model, se = TRUE, rug = TRUE, shade = TRUE)
+
+par(mfrow = c(1, 1))  # Reset to default
+
+
+
+# ===== OPTION 4: Custom layout with more control =====
+
+# Set up plotting area with margins
+
+par(mfrow = c(2, 2),
+    
+    mar = c(4, 4, 2, 1),  # bottom, left, top, right margins
+    
+    oma = c(0, 0, 2, 0))  # outer margins
+
+plot(gam_model, se = TRUE, rug = TRUE, shade = TRUE,
+     
+     col = "blue", lwd = 2)
+
+title("GAM Smooth Terms for Fraud Detection", outer = TRUE)
+
+par(mfrow = c(1, 1))  # Reset to default
+
+
+
+# ===== OPTION 5: Using pages parameter (simplest) =====
+
+plot(gam_model, pages = 1, se = TRUE, rug = TRUE, shade = FALSE)
+
+
+
+# Save as PNG
+
+png("gam_smooth_terms.png", width = 1200, height = 800, res = 120)
+
+par(mfrow = c(2, 2))
+
+plot(gam_model, se = TRUE, rug = TRUE, shade = TRUE)
+
+dev.off()
+
+
+
+# Save as PDF
+
+pdf("gam_smooth_terms.pdf", width = 12, height = 8)
+
+par(mfrow = c(2, 2))
+
+plot(gam_model, se = TRUE, rug = TRUE, shade = TRUE)
+
+dev.off()
+
+gam_model <- gam(Fraud_Label ~ 
+                   Merchant_Category + 
+                   Is_Weekend + 
+                   s(card_age)+
+                   s(Risk_Score),
+                 family = binomial(link = "logit"),
+                 data = data)
+
+
+plot(gam_model, pages = 1, se = TRUE, rug = TRUE, shade = FALSE)
