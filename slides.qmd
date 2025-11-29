@@ -1,21 +1,26 @@
 ---
-title: "Present a great story for data science projects"
-subtitle: "This is a Slide Template"
-author: "Students names (Advisor: Dr. Cohen)"
-date: '`r Sys.Date()`'
-format:
-  revealjs
-course: Capstone Projects in Data Science
-bibliography: references.bib # file contains bibtex for references
-#always_allow_html: true # this allows to get PDF with HTML features
-self-contained: true
+title: "Generalized Additive Models in Fraud Detection"
+subtitle: "Data Science Capstone Project"
+author: "Grace Allen, Kesi Allen, Sonya Melton, Pingping Zhou"
+date: "November 21, 2025"
+format: 
+  html:
+    code-fold: true       # Allows folding of code chunks
+    self-contained: true  # Packages images and CSS in the HTML
+    toc: true 
+output-dir: report1      # Folder where rendered HTML will go
+bibliography: references.bib
+csl: apa.csl 
 execute: 
   warning: false
   message: false
-editor: 
+css: styles.css 
+course: "Capstone Projects in Data Science"
+editor:
   markdown: 
     wrap: 72
 ---
+
 
 ::: callout-important
 **Remember:** Your goal is to make your audience understand and care
@@ -60,39 +65,215 @@ The PCA [@daffertshofer2004pca]\*
 -   Present initial findings and insights through visualizations.
 
 -   Highlight unexpected patterns or anomalies.
+##Data set Description
+🔹 What It Is
+•	A synthetic dataset built to mimic real financial transactions
+•	Privacy safe: No actual personal info is included, so it's fully private and ethical.
+•	Hosted on Kaggle
+🔹Why We Use It
+•	Train fraud detection models for binary classification tasks
+•	Spot fraud: each transaction labeled as fraud (1) or not fraud (0)
+🔹 What Makes It Special:
+•	Realistic Fraud: It includes tricky patterns like:
+o	Groups of fraudulent transactions.
+o	Small, hard-to-notice unusual activities.
+o	Odd user behaviors.
+•	Big & Diverse: Large enough with a mix of normal and rare fraud cases to help with imbalanced data challenges.
+
+##Key Characteristics
+🔹 What's Inside & What We Do
+•	50,000 Rows: A good amount of data to work with.
+•	Two Labels: Every transaction is marked as either:
+o	1 = Fraud
+o	0 = Not Fraud
+🔹Data Features-- 21 features across three categories:
+•	Numbers: Like transaction amounts, risk scores, account balances.
+•	Categories: Transaction types (payment, transfer, withdrawal), device types, merchant categories.
+•	Time Data: When transactions happened (time, day) and their sequence.
+🔹Label Distribution & Realism
+•	Class Imbalance: Fraudulent transactions are a small percentage, reflecting real-world scenarios.
+•	Behavioral Realism: Includes unusual spending, behavioral signals, and high-risk profiles.
+•	Modeling flexibility: supports interpretable (GAMs, logistic regression) or high-performance (XGBoost) approaches
+
 
 ## Data Exploration and Visualization {.smaller}
-
-A study was conducted to determine how...
+The charts (including Tables 1, 2, and 3) show that all categories in the dataset — transaction types, device types, and merchant groups — are almost perfectly balanced. Each transaction type has about 12,500 cases, each device type around 16,600–16,800, and each merchant category close to 10,000. This even distribution makes it simple to compare counts and spot patterns. Generalized Additive Models (GAMs) are still a strong choice because they can handle both numbers and categories, and capture complex, nonlinear relationships in the data.
 
 ```{r, warning=FALSE, echo=F, message=FALSE}
-# loading packages 
+# Load libraries
 library(tidyverse)
-library(knitr)
-library(ggthemes)
-library(ggrepel)
-library(dslabs)
+library(janitor)
+library(gt)
+library(scales)
+
+# === Load dataset ===
+data_path <- "synthetic_fraud_dataset.csv"
+df <- readr::read_csv(data_path, show_col_types = FALSE) |>
+  clean_names()
+
+# === Create count tables ===
+tbl_type <- df |>
+  count(transaction_type, name = "Count") |>
+  arrange(desc(Count)) |>
+  rename(Type = transaction_type)
+
+tbl_device <- df |>
+  count(device_type, name = "Count") |>
+  arrange(desc(Count)) |>
+  rename(Device = device_type)
+
+tbl_merchant <- df |>
+  count(merchant_category, name = "Count") |>
+  arrange(desc(Count)) |>
+  rename(Merchant_Category = merchant_category)
+
+# === Blue Theme for gt Tables ===
+style_blue_gt <- function(.data, title_text) {
+  .data |>
+    gt() |>
+    tab_header(title = md(title_text)) |>
+    fmt_number(columns = "Count", decimals = 0, sep_mark = ",") |>
+    tab_options(
+      table.font.names = "Arial",
+      table.font.size  = 14,
+      data_row.padding = px(6),
+      heading.align    = "left",
+      table.border.top.color    = "darkblue",
+      table.border.top.width    = px(3),
+      table.border.bottom.color = "darkblue",
+      table.border.bottom.width = px(3)
+    ) |>
+    tab_style(
+      style = list(cell_fill(color = "darkblue"),
+                   cell_text(color = "white", weight = "bold")),
+      locations = cells_title(groups = "title")
+    ) |>
+    tab_style(
+      style = list(cell_fill(color = "steelblue"),
+                   cell_text(color = "white", weight = "bold")),
+      locations = cells_column_labels(everything())
+    ) |>
+    opt_row_striping() |>
+    cols_align("right", columns = "Count")
+}
+
+# === Render all three blue tables ===
+style_blue_gt(tbl_type, "Table 1 – Transaction Types and Counts")
+style_blue_gt(tbl_device, "Table 2 – Device Types and Counts")
+style_blue_gt(tbl_merchant, "Table 3 – Merchant Categories and Counts")
 ```
 
-```{r, warning=FALSE, echo=F}
-# Load Data
-#kable(head(murders))
+Figure 1. Histograms show key variables used in fraud detection. Most features—Account_Balance, Transaction_Distance, Risk_Score, and Card_Age—appear uniformly distributed, supporting nonlinear modeling such as GAM. Transaction_Amount is strongly right-skewed, with many small transactions and a few large outliers, indicating that extreme amounts may signal potential fraud. This skewness suggests that transformations (e.g., log-scale) or nonlinear models like GAM can better capture fraud patterns and improve prediction accuracy.
 
-ggplot1 = murders %>% ggplot(mapping = aes(x=population/10^6, y=total)) 
+**Distribution of Variables**
 
-  ggplot1 + geom_point(aes(col=region), size = 4) +
-  geom_text_repel(aes(label=abb)) +
-  scale_x_log10() +
-  scale_y_log10() +
-  geom_smooth(formula = "y~x", method=lm,se = F)+
-  xlab("Populations in millions (log10 scale)") + 
-  ylab("Total number of murders (log10 scale)") +
-  ggtitle("US Gun Murders in 2010") +
-  scale_color_discrete(name = "Region")+
-      theme_bw()
+```{r}
+library(tidyverse)
+library(lubridate)
+library(patchwork)  # for arranging multiple ggplots
+
+# Load dataset
+fraud_data <- read.csv("synthetic_fraud_dataset.csv")
+
+# Convert Timestamp to date and calculate Issuance_Year if needed
+fraud_data <- fraud_data %>%
+  mutate(
+    Timestamp = ymd_hms(Timestamp, quiet = TRUE),  # adjust format if needed
+    Transaction_Year = year(Timestamp),
+    Issuance_Year = Transaction_Year - Card_Age
+  ) %>%
+  filter(!is.na(Card_Age))  # remove rows with NA in Card_Age
+
+# Variables to plot (move Transaction_Amount to last)
+numeric_vars <- c("Account_Balance", "Transaction_Distance", "Risk_Score", "Card_Age", "Transaction_Amount")
+
+# Create a list to store plots
+plot_list <- list()
+
+# Generate plots and store in the list
+for (var in numeric_vars) {
+  p <- ggplot(fraud_data, aes_string(x = var)) +
+    geom_histogram(fill = "steelblue", color = "white", bins = 30) +
+    labs(title = paste("Distribution of", var),
+         x = var,
+         y = "Count") +
+    theme_light()
   
+  plot_list[[var]] <- p
+}
+
+# Arrange plots in a grid: 2 plots per row
+(plot_list[[1]] | plot_list[[2]]) /
+(plot_list[[3]] | plot_list[[4]]) /
+plot_list[[5]]  # Transaction_Amount appears last
 
 ```
+
+
+Figure 2 shows that most cards are new, and older cards are less common. Older cards may be more at risk because their security features may be outdated, while newer cards may have different usage patterns, like more digital transactions. These differences suggest that fraud risk changes with card age, and models like GAM can help capture those patterns.
+```{r}
+library(tidyverse)
+library(lubridate)
+# Load libraries
+library(ggplot2)
+library(dplyr)
+library(tidyr)    # For pivot_longer
+library(gridExtra) # For arranging plots
+#install.packages("moments") 
+library(moments)   # For skewness and kurtosis
+# Load dataset
+fraud_data <- read.csv("synthetic_fraud_dataset.csv")
+
+# Convert Timestamp to date, calculate Transaction Year and Issuance Year, exclude NAs
+fraud_data <- fraud_data %>%
+  mutate(
+    Timestamp = ymd_hms(Timestamp),               # adjust if format differs
+    Transaction_Year = year(Timestamp),
+    Issuance_Year = Transaction_Year - Card_Age
+  ) %>%
+  filter(!is.na(Issuance_Year), !is.na(Card_Age))  # remove rows with NA
+
+# Bin Issuance Year into 5-year ranges and drop unused NA factor levels
+fraud_data <- fraud_data %>%
+  mutate(
+    Issuance_Year_Bin = cut(Issuance_Year,
+                             breaks = seq(2000, 2025, by = 5),
+                             right = FALSE,
+                             labels = c("2000-2004","2005-2009","2010-2014","2015-2019","2020-2024"))
+  ) %>%
+  filter(!is.na(Issuance_Year_Bin))  # drop any rows that fall outside the bins
+
+# Histogram
+ggplot(fraud_data, aes(x = Issuance_Year_Bin)) +
+  geom_bar(fill = "steelblue", color = "white") +
+  labs(title = "Figure 2. Card Age by Issuance Year Range",
+       x = "Card Issuance Year Range",
+       y = "Count") +
+  theme_light()
+
+```
+
+Figure 3 shows that fraud probability changes in a nonlinear way with transaction amount. Small payments usually have low risk, while very large amounts show higher risk. This makes transaction amount a key predictor and shows why GAMs are useful — they can flexibly capture these curved patterns.
+
+```{r}
+library(tidyverse)
+# Load dataset
+fraud_data <- read.csv("synthetic_fraud_dataset.csv")
+# Ensure Fraud_Label is numeric (0/1)
+fraud_data <- fraud_data %>%
+  mutate(Fraud_Label = as.numeric(Fraud_Label))
+
+# Nonlinearity check: Transaction Amount vs Fraud Probability
+ggplot(fraud_data, aes(x = Transaction_Amount, y = Fraud_Label)) +
+  geom_smooth(method = "loess", se = FALSE, color = "darkblue") +
+  labs(title = "Figure 3. Transaction Amount and Fraud Probability",
+       x = "Transaction Amount",
+       y = "Fraud Probability") +
+  theme_light()
+```
+
+
+
 
 ## Modeling and Results
 
