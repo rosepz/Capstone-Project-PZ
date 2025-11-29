@@ -1,0 +1,37 @@
+body {
+  background-color: #afc6c6;
+  font-family: "Avenir", "Helvetica Neue", sans-serif;
+}
+
+}
+
+h2, h3 {
+  color: #232828;
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 1em 0 0.5em 0; /* standard spacing */
+}
+
+/* Target the outer appendix container and inner references */
+#quarto-appendix,
+#quarto-appendix section.quarto-appendix-contents,
+#quarto-appendix section.quarto-appendix-contents h2,
+#refs.references,
+#refs.references * {
+    margin: 0 !important;
+    padding: 0 !important;
+    background-color: #afc6c6 !important; /* same as page */
+}
+
+/* Optional: remove hanging indent spacing if you want flush references */
+#refs.references {
+    text-indent: 0 !important;
+}
+
+/* Optional: remove spacing from individual reference entries */
+#refs.references li {
+    margin: 0 !important;
+    padding: 0 !important;
+}
